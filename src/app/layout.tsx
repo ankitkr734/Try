@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'EmotiVision', // Update title
-  description: 'AI-Based Emotion Detection from Facial Expressions', // Update description
+  description: 'AI-Based Emotion Detection from Facial Expressions via Webcam or Image Upload', // Update description
 };
 
 export default function RootLayout({
