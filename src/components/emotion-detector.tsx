@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from "@/hooks/use-toast";
-import { Upload, Smile, Frown, Angry, Meh, Annoyed, Surprised, Loader2, AlertCircle, Image as ImageIcon } from 'lucide-react'; // Added Image icon
+import { Upload, Smile, Frown, Angry, Meh, Annoyed, SmilePlus, Loader2, AlertCircle, Image as ImageIcon } from 'lucide-react'; // Changed Surprised to SmilePlus
 
 // Define the type for emotion results
 type EmotionResult = AnalyzeEmotionFromImageOutput | null;
@@ -29,7 +29,7 @@ const getEmotionIcon = (emotion?: string): React.ReactNode => {
       return <Angry className="w-6 h-6 text-red-500" />;
     case 'surprise':
     case 'surprised':
-       return <Surprised className="w-6 h-6 text-yellow-500" />;
+       return <SmilePlus className="w-6 h-6 text-yellow-500" />; // Used SmilePlus for Surprise
     case 'fear':
        return <Annoyed className="w-6 h-6 text-purple-500" />; // Using Annoyed for Fear as lucide lacks a specific 'Fear' icon
     case 'neutral':
