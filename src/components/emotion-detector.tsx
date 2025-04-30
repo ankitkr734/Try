@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback, ChangeEvent } from 'react';
@@ -9,7 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Import Tabs components
 import { useToast } from "@/hooks/use-toast";
-import { Smile, Frown, Angry, Meh, Annoyed, SmilePlus, Loader2, AlertCircle, Video, CameraOff, Upload, Image as ImageIcon } from 'lucide-react'; // Added ImageIcon, Upload
+import { Smile, Frown, Angry, Meh, Annoyed, SmilePlus, Loader2, AlertCircle, Video, CameraOff, Upload, Image as ImageIcon, RotateCcw } from 'lucide-react'; // Added ImageIcon, Upload, RotateCcw
 
 // Define the type for emotion results
 type EmotionResult = AnalyzeEmotionFromImageOutput | null;
@@ -48,6 +49,7 @@ export default function EmotionDetector() {
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('webcam');
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [selectedImageDataUri, setSelectedImageDataUri] = useState<string | null>(null);
+  const [showResetButton, setShowResetButton] = useState<boolean>(false); // State for reset button visibility
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -111,11 +113,14 @@ export default function EmotionDetector() {
         return null;
     }
 
+    // Set canvas size based on video dimensions for accurate capture
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
+
     context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
 
     try {
+        // Use a lower quality setting if needed for performance, e.g., 0.8
         const dataUri = canvas.toDataURL('image/jpeg', 0.9);
         return dataUri;
     } catch (e) {
@@ -125,12 +130,14 @@ export default function EmotionDetector() {
     }
   };
 
+
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       setSelectedImageFile(file);
       setError(null); // Clear previous errors
       setResult(null); // Clear previous results
+      setShowResetButton(false); // Hide reset button when new file is selected
 
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -149,6 +156,7 @@ export default function EmotionDetector() {
     setIsLoading(true);
     setError(null);
     setResult(null); // Clear previous result
+    setShowResetButton(false); // Hide reset initially
 
     let photoDataUri: string | null = null;
 
@@ -170,6 +178,7 @@ export default function EmotionDetector() {
 
       const analysisResult = await analyzeEmotionFromImage({ photoDataUri });
       setResult(analysisResult);
+      setShowResetButton(true); // Show reset button after successful analysis
       toast({
         title: "Analysis Complete",
         description: `Detected emotion: ${analysisResult.emotion}`,
@@ -178,6 +187,7 @@ export default function EmotionDetector() {
       console.error("Error analyzing emotion:", err);
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred during analysis.';
       setError(`Analysis failed: ${errorMessage}`);
+      setShowResetButton(true); // Also show reset button on error
       toast({
         title: "Analysis Error",
         description: errorMessage,
@@ -191,15 +201,29 @@ export default function EmotionDetector() {
   const handleModeChange = (value: string) => {
     const newMode = value as AnalysisMode;
     setAnalysisMode(newMode);
-    setError(null); // Clear errors on mode switch
-    setResult(null); // Clear results on mode switch
+    handleReset(); // Reset everything when changing mode
     if (newMode === 'webcam') {
-        setSelectedImageDataUri(null); // Clear image selection
-        setSelectedImageFile(null);
         // Webcam stream is handled by useEffect
     } else {
         stopWebcamStream(); // Stop webcam if switching to image mode
     }
+  };
+
+   const handleReset = () => {
+    setResult(null);
+    setError(null);
+    setIsLoading(false);
+    setSelectedImageFile(null);
+    setSelectedImageDataUri(null);
+    setShowResetButton(false);
+    // Reset file input so the same file can be re-selected
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    // Optionally restart webcam if in webcam mode and stopped
+    // if (analysisMode === 'webcam' && !videoRef.current?.srcObject) {
+    //    startWebcamStream();
+    // }
   };
 
   const triggerFileInput = () => {
@@ -212,7 +236,7 @@ export default function EmotionDetector() {
       <CardHeader>
         <CardTitle className="text-center text-xl md:text-2xl font-semibold text-primary">Emotion Analysis</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-4"> {/* Reduced spacing slightly */}
 
         <Tabs value={analysisMode} onValueChange={handleModeChange} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
@@ -245,7 +269,7 @@ export default function EmotionDetector() {
                     autoPlay
                     muted
                     playsInline
-                    className={`w-full h-full object-cover ${hasCameraPermission === true ? 'block' : 'hidden'}`}
+                    className={`w-full h-full object-cover transform scaleX(-1) ${hasCameraPermission === true ? 'block' : 'hidden'}`} // Mirror webcam feed
                  />
                  <canvas ref={canvasRef} className="hidden" />
 
@@ -264,7 +288,7 @@ export default function EmotionDetector() {
                     </div>
                  )}
                  {/* Placeholder when webcam is active but feed might be loading */}
-                  {hasCameraPermission === true && !videoRef.current?.videoWidth && (
+                  {hasCameraPermission === true && !videoRef.current?.srcObject && ( // Check srcObject instead of videoWidth
                      <div className="absolute inset-0 flex items-center justify-center text-muted-foreground bg-secondary/80">
                         <Loader2 className="w-12 h-12 animate-spin" />
                     </div>
@@ -281,8 +305,8 @@ export default function EmotionDetector() {
                    <Image
                      src={selectedImageDataUri}
                      alt="Selected image preview"
-                     layout="fill"
-                     objectFit="contain" // Use contain to show the whole image
+                     fill // Use fill and object-contain for better control
+                     style={{ objectFit: 'contain' }} // Ensures the whole image is visible
                    />
                  ) : (
                    <div className="text-center text-muted-foreground p-4">
@@ -302,6 +326,7 @@ export default function EmotionDetector() {
                  onClick={triggerFileInput}
                  variant="outline"
                  className="w-full"
+                 disabled={isLoading}
                >
                  <Upload className="mr-2 h-4 w-4" />
                  {selectedImageFile ? `Change Image (${selectedImageFile.name})` : 'Select Image'}
@@ -311,29 +336,46 @@ export default function EmotionDetector() {
         </Tabs>
 
 
-        {/* Analyze Button */}
-        <Button
-          onClick={handleAnalyzeClick}
-          disabled={
-            isLoading ||
-            (analysisMode === 'webcam' && !hasCameraPermission) ||
-            (analysisMode === 'image' && !selectedImageDataUri)
-          }
-          className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-          aria-live="polite"
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Analyzing...
-            </>
-          ) : (
-            <>
-              {analysisMode === 'webcam' ? <Video className="mr-2 h-4 w-4" /> : <ImageIcon className="mr-2 h-4 w-4" />}
-              {analysisMode === 'webcam' ? 'Analyze Webcam Feed' : 'Analyze Uploaded Image'}
-            </>
-          )}
-        </Button>
+        {/* Action Buttons Container */}
+        <div className="flex flex-col sm:flex-row gap-2">
+            {/* Analyze Button */}
+            <Button
+              onClick={handleAnalyzeClick}
+              disabled={
+                isLoading ||
+                (analysisMode === 'webcam' && !hasCameraPermission) ||
+                (analysisMode === 'image' && !selectedImageDataUri)
+              }
+              className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground" // flex-1 makes it grow
+              aria-live="polite"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  {analysisMode === 'webcam' ? <Video className="mr-2 h-4 w-4" /> : <ImageIcon className="mr-2 h-4 w-4" />}
+                  {analysisMode === 'webcam' ? 'Analyze Webcam Feed' : 'Analyze Uploaded Image'}
+                </>
+              )}
+            </Button>
+
+             {/* Reset Button */}
+            {showResetButton && (
+                <Button
+                onClick={handleReset}
+                variant="outline"
+                disabled={isLoading}
+                className="flex-none" // flex-none prevents it from growing
+                >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Reset
+                </Button>
+            )}
+        </div>
+
 
         {/* Progress Indicator */}
         {isLoading && (
@@ -368,3 +410,6 @@ export default function EmotionDetector() {
     </Card>
   );
 }
+
+
+    
