@@ -17,10 +17,17 @@ const Progress = React.forwardRef<
     )}
     {...props}
   >
-    <ProgressPrimitive.Indicator
-      className={cn("h-full w-full flex-1 bg-primary transition-all", indicatorClassName)}
-      style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
-    />
+    {/* If value is undefined, render an indeterminate state or nothing, else render the indicator */}
+    {value !== undefined ? (
+      <ProgressPrimitive.Indicator
+        className={cn("h-full w-full flex-1 bg-primary transition-all", indicatorClassName)}
+        style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
+      />
+    ) : (
+       // Optional: Render something specific for indeterminate state if needed, or just let the background show.
+       // Example for indeterminate (requires additional CSS for animation):
+       <div className={cn("h-full w-full flex-1 bg-primary transition-all", indicatorClassName)} />
+    )}
   </ProgressPrimitive.Root>
 ))
 Progress.displayName = ProgressPrimitive.Root.displayName

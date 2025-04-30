@@ -1,14 +1,13 @@
 "use client";
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { analyzeEmotionFromImage, type AnalyzeEmotionFromImageOutput } from '@/ai/flows/analyze-emotion-from-image';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from "@/hooks/use-toast";
-import { Upload, Smile, Frown, Angry, Meh, Annoyed, SmilePlus, Loader2, AlertCircle, Image as ImageIcon } from 'lucide-react'; // Changed Surprised to SmilePlus
+import { Upload, Smile, Frown, Angry, Meh, Annoyed, SmilePlus, Loader2, AlertCircle, Video, CameraOff } from 'lucide-react'; // Removed Image icon, Added Video, CameraOff
 
 // Define the type for emotion results
 type EmotionResult = AnalyzeEmotionFromImageOutput | null;
@@ -39,79 +38,100 @@ const getEmotionIcon = (emotion?: string): React.ReactNode => {
 };
 
 export default function EmotionDetector() {
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [result, setResult] = useState<EmotionResult>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null); // null initially, true/false after check
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      // Basic image type validation
-      if (!file.type.startsWith('image/')) {
-        setError('Invalid file type. Please upload an image (JPEG, PNG, GIF, WEBP).');
-        setImageFile(null);
-        setImagePreview(null);
-        setResult(null);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ''; // Reset file input
+  useEffect(() => {
+    const getCameraPermission = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        setHasCameraPermission(true);
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
         }
-        return;
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        setHasCameraPermission(false);
+        setError("Failed to access webcam. Please ensure you have a webcam and grant permissions in your browser settings.");
+        toast({
+          variant: 'destructive',
+          title: 'Camera Access Denied',
+          description: 'Please enable camera permissions in your browser settings to use this app.',
+        });
       }
+    };
 
-      // Size validation (e.g., max 5MB)
-      const maxSizeInBytes = 5 * 1024 * 1024;
-      if (file.size > maxSizeInBytes) {
-          setError('File size exceeds 5MB limit.');
-          setImageFile(null);
-          setImagePreview(null);
-          setResult(null);
-          if (fileInputRef.current) {
-              fileInputRef.current.value = ''; // Reset file input
-          }
-          return;
+    getCameraPermission();
+
+    // Cleanup function to stop video stream when component unmounts
+    return () => {
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+        videoRef.current.srcObject = null;
       }
+    };
+  }, [toast]); // Added toast dependency
 
-      setImageFile(file);
-      setResult(null); // Clear previous results
-      setError(null); // Clear previous errors
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    } else {
-        setImageFile(null);
-        setImagePreview(null);
-        setResult(null);
+  const captureFrame = (): string | null => {
+    if (!videoRef.current || !canvasRef.current || !hasCameraPermission) return null;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+        console.error("Could not get canvas context");
+        return null;
+    }
+
+    // Set canvas dimensions to match video feed for accurate capture
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    // Draw the current video frame onto the hidden canvas
+    context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+
+    // Convert the canvas content to a JPEG data URI
+    // Use JPEG for smaller file size compared to PNG, suitable for analysis
+    try {
+        const dataUri = canvas.toDataURL('image/jpeg', 0.9); // Quality 0.9
+        return dataUri;
+    } catch (e) {
+        console.error("Error converting canvas to data URL:", e);
+        setError("Failed to capture frame from video feed.");
+        return null;
     }
   };
 
   const handleAnalyzeClick = async () => {
-    if (!imageFile || !imagePreview) {
-       toast({
-          title: "No Image Selected",
-          description: "Please select an image file first.",
-          variant: "destructive",
-        });
+    if (!hasCameraPermission) {
+      toast({
+        title: "Webcam Required",
+        description: "Please enable webcam access to analyze live feed.",
+        variant: "destructive",
+      });
       return;
     }
 
     setIsLoading(true);
     setError(null);
-    setResult(null);
+    setResult(null); // Clear previous result when starting new analysis
 
     try {
-        // Ensure imagePreview has the base64 data URI format
-        if (!imagePreview.startsWith('data:image/')) {
-            throw new Error('Invalid image data format for analysis.');
-        }
+      const photoDataUri = captureFrame();
+      if (!photoDataUri) {
+        throw new Error('Could not capture frame from webcam.');
+      }
 
-      const analysisResult = await analyzeEmotionFromImage({ photoDataUri: imagePreview });
+      const analysisResult = await analyzeEmotionFromImage({ photoDataUri });
       setResult(analysisResult);
       toast({
         title: "Analysis Complete",
@@ -131,91 +151,81 @@ export default function EmotionDetector() {
     }
   };
 
-  const triggerFileInput = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleClear = () => {
-    setImageFile(null);
-    setImagePreview(null);
-    setResult(null);
-    setError(null);
-    setIsLoading(false);
-    if (fileInputRef.current) {
-        fileInputRef.current.value = ''; // Reset file input
-    }
-  };
-
 
   return (
     <Card className="w-full shadow-lg rounded-xl overflow-hidden">
       <CardHeader>
-        <CardTitle className="text-center text-xl md:text-2xl font-semibold text-primary">Emotion Detection</CardTitle>
+        <CardTitle className="text-center text-xl md:text-2xl font-semibold text-primary">Live Emotion Detection</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {error && (
+        {error && hasCameraPermission === false && ( // Show specific error if camera permission denied
+          <Alert variant="destructive">
+            <CameraOff className="h-4 w-4" />
+            <AlertTitle>Camera Access Required</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+         {error && hasCameraPermission !== false && ( // Show general analysis errors
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
+            <AlertTitle>Analysis Error</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
+
         <div className="flex flex-col items-center space-y-4">
-          <div
-            className={`relative w-full aspect-video bg-secondary rounded-lg flex items-center justify-center border-2 border-dashed ${error ? 'border-destructive' : 'border-border'} overflow-hidden cursor-pointer hover:border-primary transition-colors`}
-            onClick={triggerFileInput}
-            role="button"
-            aria-label="Upload image area"
-          >
-            {imagePreview ? (
-              <img src={imagePreview} alt="Uploaded preview" className="object-contain max-h-full max-w-full" />
-            ) : (
-              <div className="text-center text-muted-foreground p-4">
-                 <ImageIcon className="w-12 h-12 mx-auto mb-2" />
-                <p>Click or drag & drop to upload an image</p>
-                <p className="text-xs">(Max 5MB: JPEG, PNG, GIF, WEBP)</p>
-              </div>
-            )}
+          <div className="relative w-full aspect-video bg-secondary rounded-lg flex items-center justify-center border-2 border-dashed border-border overflow-hidden">
+             {/* Always render video tag to prevent issues, but hide if no permission */}
+             <video
+                ref={videoRef}
+                autoPlay
+                muted // Mute video to avoid feedback loop if audio was enabled
+                playsInline // Important for mobile browsers
+                className={`w-full h-full object-cover ${hasCameraPermission ? 'block' : 'hidden'}`}
+             />
+             {/* Hidden canvas for frame capture */}
+             <canvas ref={canvasRef} className="hidden" />
+
+             {/* Loading/Permission State Indicators */}
+             {hasCameraPermission === null && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground bg-secondary/80">
+                    <Loader2 className="w-12 h-12 animate-spin mb-2" />
+                    <p>Checking camera access...</p>
+                </div>
+             )}
+             {hasCameraPermission === false && (
+                 <div className="absolute inset-0 flex flex-col items-center justify-center text-destructive-foreground bg-destructive/80 p-4 text-center">
+                    <CameraOff className="w-12 h-12 mb-2" />
+                    <p>Camera access denied or unavailable.</p>
+                    <p className="text-xs mt-1">Please grant permission in your browser settings.</p>
+                </div>
+             )}
           </div>
-          <Input
-            ref={fileInputRef}
-            id="image-upload"
-            type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            onChange={handleFileChange}
-            className="hidden" // Hide the default input, use the area above
-            aria-label="Image file input"
-          />
-           {imagePreview && (
-            <Button variant="outline" size="sm" onClick={handleClear} className="mt-2">
-              Clear Image
-            </Button>
-           )}
         </div>
 
 
         <Button
           onClick={handleAnalyzeClick}
-          disabled={!imageFile || isLoading}
+          disabled={!hasCameraPermission || isLoading}
           className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
           aria-live="polite"
         >
           {isLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Analyzing...
+              Analyzing Feed...
             </>
           ) : (
             <>
-              <Upload className="mr-2 h-4 w-4" />
-              Analyze Emotion
+              <Video className="mr-2 h-4 w-4" />
+              Analyze Webcam Feed
             </>
           )}
         </Button>
 
         {isLoading && (
-            <Progress value={undefined} className="w-full h-2 animate-pulse" /> // Indeterminate progress
+            <Progress value={undefined} indicatorClassName="animate-pulse bg-primary" className="w-full h-2" /> // Indeterminate progress
         )}
 
         {result && !isLoading && (
@@ -233,14 +243,14 @@ export default function EmotionDetector() {
                    <span>Confidence</span>
                    <span>{`${(result.confidence * 100).toFixed(1)}%`}</span>
                  </div>
-                 <Progress value={result.confidence * 100} className="w-full h-2 [&>div]:bg-accent" />
+                 <Progress value={result.confidence * 100} indicatorClassName="bg-accent" className="w-full h-2" />
                </div>
             </CardContent>
            </Card>
         )}
       </CardContent>
        <CardFooter className="text-xs text-muted-foreground text-center p-4 pt-0">
-           AI analysis provides an estimate. Results may vary based on image quality and facial expression clarity.
+           AI analysis provides an estimate based on a single frame. Results may vary based on lighting, expression clarity, and angle.
         </CardFooter>
     </Card>
   );
