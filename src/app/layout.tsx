@@ -26,7 +26,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8 bg-secondary">
+        {/* Apply a subtle gradient background */}
+        <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8 bg-gradient-to-br from-background via-secondary/30 to-background">
           {children}
         </main>
         <Toaster /> {/* Add Toaster component */}
